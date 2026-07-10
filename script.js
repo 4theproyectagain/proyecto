@@ -1,53 +1,124 @@
-const boton = document.getElementById("startButton");
+import {
+  FaceLandmarker,
+  FilesetResolver
+} from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/+esm";
+
+
 const video = document.getElementById("video");
 const emotionText = document.getElementById("emotion");
 
-boton.addEventListener("click", async () => {
-    try {
 
-        await faceapi.nets.tinyFaceDetector.loadFromUri("./models");
-        await faceapi.nets.faceExpressionNet.loadFromUri("./models");
+let faceLandmarker;
+let lastVideoTime = -1;
 
-        const stream = await navigator.mediaDevices.getUserMedia({
-            video: true
-        });
 
-        video.srcObject = stream;
+// Cargar modelo de MediaPipe
+async function createFaceLandmarker() {
 
-        emotionText.innerHTML = "🧠 IA activada, analizando...";
+  const vision = await FilesetResolver.forVisionTasks(
+    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/wasm"
+  );
 
-        video.addEventListener("play", () => {
 
-            setInterval(async () => {
+  faceLandmarker = await FaceLandmarker.createFromOptions(
+    vision,
+    {
+      baseOptions: {
+        modelAssetPath: "./models/face_landmarker.task"
+      },
 
-                const detections = await faceapi
-                    .detectSingleFace(
-                        video,
-                        new faceapi.TinyFaceDetectorOptions()
-                    )
-                    .withFaceExpressions();
+      runningMode: "VIDEO",
 
-                if (detections) {
-
-                    const expressions = detections.expressions;
-
-                    const emotion = Object.keys(expressions)
-                        .reduce((a, b) =>
-                            expressions[a] > expressions[b] ? a : b
-                        );
-
-                    emotionText.innerHTML =
-                        "😊 " + emotion;
-
-                }
-
-            }, 1000);
-
-        });
-
-    } catch (error) {
-    alert(error.message);
-    console.error(error);
-}
+      numFaces: 1
     }
+  );
+
+  startCamera();
+}
+
+
+
+// Encender cámara
+function startCamera() {
+
+  navigator.mediaDevices.getUserMedia({
+    video: {
+      width: 640,
+      height: 480
+    }
+  })
+
+  .then((stream)=>{
+
+    video.srcObject = stream;
+
+  })
+
+  .catch((error)=>{
+
+    console.error(
+      "No se pudo activar la cámara:",
+      error
+    );
+
+  });
+
+}
+
+
+
+// Detectar rostro
+async function predict() {
+
+  if (
+    video.currentTime !== lastVideoTime &&
+    faceLandmarker
+  ) {
+
+    lastVideoTime = video.currentTime;
+
+
+    const results =
+      faceLandmarker.detectForVideo(
+        video,
+        performance.now()
+      );
+
+
+    if(results.faceLandmarks.length > 0){
+
+      const landmarks =
+        results.faceLandmarks[0];
+
+
+      /*
+        Aquí analizamos puntos del rostro.
+        Después conectamos el modelo de emociones.
+      */
+
+
+      emotionText.innerHTML =
+        "Rostro detectado ✅";
+
+
+    } else {
+
+      emotionText.innerHTML =
+        "No se detecta rostro";
+
+    }
+
+  }
+
+
+  requestAnimationFrame(predict);
+
+}
+
+
+
+// Iniciar
+createFaceLandmarker()
+.then(()=>{
+  predict();
 });
